@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { useEffect, useState } from 'react';
 import pixabayAPI from '../../services/pixabayApi';
 import { Skeleton } from 'components/Skeleton';
 import ErrorSearch from 'components/ErrorSearch';
@@ -14,117 +14,81 @@ const Status = {
   REJECTED: 'rejected',
 };
 
-export default class ImageGallery extends Component {
-  state = {
-    status: Status.IDLE,
-    images: [],
-    page: 1,
-    error: null,
-    modalImg: { url: null, alt: null },
-    showButton: false,
-    showModal: false,
-  }
+export default function ImageGallery({ searchQuery }) {
+  const [status, setStatus] = useState(Status.IDLE);
+  const [images, setImages] = useState([]);
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState(null);
+  const [query, setQuery] = useState("");
+  const [showButton, setShowButton] = useState(false);
 
-  componentDidUpdate(prevProps, prevState) {
-    const prevSearchQuery = prevProps.searchQuery;
-    const nextSearchQuery = this.props.searchQuery;
-    const prevPage = prevState.page;
-    const nextPage = this.state.page;
 
-    if (prevSearchQuery !== nextSearchQuery) {
-      this.setState({ images: [], page: 1 });
-    }
-    if ((prevSearchQuery !== nextSearchQuery && nextPage === 1) ||
-      prevPage !== nextPage) {
-      this.setState({ status: Status.PENDING });
-      this.fetchImages();
-    }
-    if (this.state.images.length - prevState.images.length === 12) {
-      this.setState({ showButton: true });
-    }
-  }
 
-  fetchImages = () => {
-    pixabayAPI.getImages(this.props.searchQuery, this.state.page)
-      .then((images) => {
-        if (images.length === 0) {
-          return Promise.reject(new Error(`${this.props.searchQuery}`));
-        } else if (images.length < 12) {
-          alert("No more results found");
-          this.setState({ showButton: false });
-        }
-        this.setState((prevState) => {
-          return {
-            images: [...prevState.images, ...images],
-            status: Status.RESOLVED,
-          };
-        });
-      })
-      .catch(error => this.setState(
-        { error, status: Status.REJECTED }
-      ))
-      .finally(() => {
-        this.scrollDown();
+  useEffect(() => {
+    if (searchQuery === '') {
+      return
+    }
+
+    if (searchQuery !== query) {
+      setQuery(searchQuery);
+      setImages([]);
+      setPage(1);
+      return;
+    }
+
+
+    pixabayAPI.getImages(searchQuery, page)
+      .then(
+        images => {
+          console.log("Fetch", images);
+          setImages(prevState => [...prevState, ...images]);
+          if (images.length === 0) {
+            return Promise.reject(new Error(`${searchQuery}`));
+          } else if (images.length < 12) {
+            setShowButton(false)
+          } else if (images.length === 12) {
+            setShowButton(true)
+          }
+          setStatus(Status.RESOLVED);
+
+
+        })
+      .catch(error => {
+        setError(error);
+        setStatus(Status.REJECTED);
       });
+
+  }, [searchQuery, query, page]);
+
+
+
+  const onClickButton = () => {
+    setPage(state => state + 1);
+
   }
-  toggleModal = () => {
-    this.setState(({ showModal }) => ({ showModal: !showModal }));
-  };
 
-  handleModalImage = ({ largeImageURL: url, alt }) => {
-    this.setState({ modalImg: { url, alt } });
-    this.toggleModal();
-  };
+  return (
+    <>
+      {status === Status.IDLE && <></>}
+      {status === Status.REJECTED && <ErrorSearch message={error.message} />}
+      {status === Status.PENDING && <Skeleton />}
+      {status === Status.RESOLVED && (
+        <>
+          <ul className={style.imageGallery} >
+            {images.map(({ id, webformatURL, largeImageURL, tags }) => {
+              return <ImageGalleryItem
+                key={id}
+                smallImageURL={webformatURL}
+                largeImageURL={largeImageURL}
+                alt={tags}
+              />
+            })}
+          </ul>
+          {showButton && <Button onClickButton={onClickButton} />}
 
-  onClickButton = () => {
-    this.setState((state) => ({
-      page: state.page + 1,
-    }));
-    this.scrollDown();
-  };
-
-  scrollDown = () => {
-    setTimeout(() => {
-      window.scrollTo({
-        top: document.body.scrollHeight,
-        left: 0,
-        behavior: 'smooth',
-      });
-    }, 500);
-  };
-
-  render() {
-    const { status, error, images, showModal, showButton } = this.state;
-    return (
-      <>
-        {status === Status.IDLE && <></>}
-        {status === Status.REJECTED && <ErrorSearch message={error.message} />}
-        {status === Status.PENDING && <Skeleton />}
-        {status === Status.RESOLVED && (
-          <>
-            <ul className={style.imageGallery} >
-              {images.map(({ id, webformatURL, largeImageURL, tags }) => {
-                return <ImageGalleryItem
-                  key={id}
-                  smallImageURL={webformatURL}
-                  largeImageURL={largeImageURL}
-                  alt={tags}
-                  modalImage={this.handleModalImage}
-                />
-              })}
-            </ul>
-            {showButton && <Button onClickButton={this.onClickButton} />}
-          </>)
-        }
-
-        {showModal && (
-          <Modal onCloseModal={this.toggleModal}>
-            <img src={this.state.modalImg.url} alt={this.state.modalImg.alt} />
-          </Modal>
-        )}
-      </>
-    )
-  }
+        </>)
+      }
+    </>
+  );
 }
-
 
